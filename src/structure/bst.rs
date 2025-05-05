@@ -64,39 +64,48 @@ impl BstNode {
 
     //search the current tree which node fit the value
     pub fn tree_search(&self, value: &i32) -> Option<BstNodeLink> {
-        if let Some(key) = self.key {
-            if key == *value {
-                return Some(self.get_bst_nodelink_copy());
+        let mut current = Some(self.get_bst_nodelink_copy());
+
+        while let Some(node_link) = current {
+            let node = node_link.borrow();
+            if node.key.is_none() {
+                return None;
             }
-            if *value < key && self.left.is_some() {
-                return self.left.as_ref().unwrap().borrow().tree_search(value);
-            } else if self.right.is_some() {
-                return self.right.as_ref().unwrap().borrow().tree_search(value);
+            let node_key = node.key.unwrap();
+            if *value == node_key {
+                return Some(node_link.clone());
+            } else if *value < node_key {
+                current = node.left.clone();
+            } else {
+                current = node.right.clone();
             }
         }
-        //default if current node is NIL
         None
     }
 
     /**seek minimum by recurs
      * in BST minimum always on the left
      */
-    pub fn minimum(&self) -> BstNodeLink {
-        if self.key.is_some() {
-            if let Some(left_node) = &self.left {
-                return left_node.borrow().minimum();
+     pub fn minimum(&self) -> BstNodeLink {
+        let mut current = self.get_bst_nodelink_copy();
+        loop {
+            let left = current.borrow().left.clone();
+            if left.is_none() {
+                return current;
             }
+            current = left.unwrap();
         }
-        self.get_bst_nodelink_copy()
     }
 
     pub fn maximum(&self) -> BstNodeLink {
-        if self.key.is_some() {
-            if let Some(right_node) = &self.right {
-                return right_node.borrow().maximum();
+        let mut current = self.get_bst_nodelink_copy();
+        loop {
+            let right = current.borrow().right.clone();
+            if right.is_none() {
+                return current;
             }
+            current = right.unwrap();
         }
-        self.get_bst_nodelink_copy()
     }
 
     /**
@@ -115,32 +124,22 @@ impl BstNode {
      * Find node successor according to the book
      * Should return None, if x_node is the highest key in the tree
      */
-    pub fn tree_successor(x_node: &BstNodeLink) -> Option<BstNodeLink> {
-        // directly check if the node has a right child, otherwise go to the next block
-        if let Some(right_node) = &x_node.borrow().right {
-            return Some(right_node.borrow().minimum());
-        } 
-        
-        // empty right child case
-        else { 
-            let mut x_node = x_node;
-            let mut y_node = BstNode::upgrade_weak_to_strong(x_node.borrow().parent.clone());
-            let mut temp: BstNodeLink;
-
-            while let Some(ref exist) = y_node {
-                if let Some(ref left_child) = exist.borrow().left {
-                    if BstNode::is_node_match(left_child, x_node) {
-                        return Some(exist.clone());
-                    }
-                }
-
-                temp = y_node.unwrap();
-                x_node = &temp;
-                y_node = BstNode::upgrade_weak_to_strong(temp.borrow().parent.clone());
-            }
-
-            None    
+     pub fn tree_successor(x_node: &BstNodeLink) -> BstNodeLink {
+        let x_ref = x_node.borrow();
+        if let Some(right) = x_ref.right.clone() {
+            return right.borrow().minimum();
         }
+        drop(x_ref); // important to release borrow before mutate x_node
+        let mut x = x_node.clone();
+        let mut y_opt = BstNode::upgrade_weak_to_strong(x.borrow().parent.clone());
+        while let Some(y) = y_opt.clone() {
+            if Rc::ptr_eq(&x, &y.borrow().left.clone().unwrap_or_else(|| BstNode::new_bst_nodelink(0))) {
+                return y;
+            }
+            x = y;
+            y_opt = BstNode::upgrade_weak_to_strong(x.borrow().parent.clone());
+        }
+        x_node.clone() // return self if no successor (means x is the maximum node)
     }
 
     /**
